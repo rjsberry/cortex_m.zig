@@ -159,7 +159,21 @@ export const _EXCEPTIONS linksection(".vector_table.exceptions") = blk: {
     break :blk vectors;
 };
 
+/// The reset handler.
+///
+/// If the core has a floating point hardware accelerator we fully enable both
+/// CP10 and CP11 coprocessors (this check is made at comptime and has no
+/// runtime cost).
+///
+/// Branches to `main` which must have the following signature:
+///
+/// ```
+/// export fn main() callconv(.C) noreturn {
+///     // ...
+/// }
+/// ```
 export fn _reset() linksection(".text._reset") callconv(.Naked) noreturn {
+    // Note: all variables below come from the linker script.
     asm volatile (
         \\ldr r0, =_sbss
         \\ldr r1, =_ebss
