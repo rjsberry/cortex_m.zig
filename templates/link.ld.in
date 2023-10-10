@@ -10,6 +10,7 @@ PROVIDE(_memManageFault = _defaultHandler);
 PROVIDE(_busFault = _defaultHandler);
 PROVIDE(_usageFault = _defaultHandler);
 PROVIDE(_svCall = _defaultHandler);
+PROVIDE(_debugMonitor = _defaultHandler);
 PROVIDE(_pendSv = _defaultHandler);
 PROVIDE(_sysTick = _defaultHandler);
 
