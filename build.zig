@@ -48,15 +48,13 @@ pub const MemoryRegion = struct {
     len: RegionLength,
 };
 
-/// Basic linker script template.
-const link_template = @embedFile("templates/link.ld.in");
-
 /// Generates and sets the linker script for a firmware artifact.
 pub fn link(
-    b: *std.Build,
     executable: *Step.Compile,
     layout: Layout,
 ) !void {
+    const b = executable.step.owner;
+
     var got_flash = false;
     var got_ram = false;
 
@@ -79,20 +77,28 @@ pub fn link(
     var script = ArrayList(u8).init(b.allocator);
     defer script.deinit();
     try generateMemoryBlock(&script, &layout);
-    try script.appendSlice(link_template);
 
     var tmp_path = b.makeTempPath();
-    const script_path = try fs.path.join(b.allocator, &[_][]const u8{
-        tmp_path,
-        "link.ld",
-    });
-    defer b.allocator.free(script_path);
 
-    var script_file = try fs.createFileAbsolute(script_path, .{});
-    defer script_file.close();
-    try script_file.writeAll(script.items);
+    var tmp_dir = try fs.openDirAbsolute(tmp_path, .{});
+    defer tmp_dir.close();
 
-    executable.setLinkerScript(.{ .path = script_path });
+    var memory_layout_script = try tmp_dir.createFile("memory_layout.ld", .{});
+    defer memory_layout_script.close();
+    try memory_layout_script.writeAll(script.items);
+
+    var linker_script = try tmp_dir.createFile("link.ld", .{});
+    defer linker_script.close();
+    try linker_script.writeAll(@embedFile("link.ld"));
+
+    const linker_script_path = try fs.path.join(
+        b.allocator,
+        &.{ tmp_path, "link.ld" },
+    );
+    defer b.allocator.free(linker_script_path);
+
+    executable.addLibraryPath(.{ .path = tmp_path });
+    executable.setLinkerScript(.{ .path = linker_script_path });
 
     const cleanup = b.addRemoveDirTree(tmp_path);
     cleanup.step.dependOn(&executable.step);

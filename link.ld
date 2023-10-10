@@ -1,3 +1,5 @@
+INCLUDE memory_layout.ld
+
 EXTERN(_EXCEPTIONS);
 EXTERN(_INTERRUPTS);
 
