@@ -25,6 +25,7 @@ pub fn build(b: *std.Build) void {
 /// This is used to generate the linker script.
 pub const Layout = struct {
     regions: []const MemoryRegion,
+    sections: []const Section = &.{},
 };
 
 /// Tag for `RegionLength` enum.
@@ -46,6 +47,18 @@ pub const MemoryRegion = struct {
     name: []const u8,
     origin: usize,
     len: RegionLength,
+};
+
+/// An output section of the program.
+pub const Section = struct {
+    /// The name of the section.
+    name: []const u8,
+    /// The VMA (virtual memory address) of the section.
+    address: ?[]const u8 = null,
+    /// Input data to place in the section, avoiding garbage collection.
+    keep: []const []const u8 = &.{},
+    /// Places the section in the defined region.
+    region: []const u8,
 };
 
 /// Generates and sets the linker script for a firmware artifact.
@@ -76,10 +89,14 @@ pub fn link(
 
     var script = ArrayList(u8).init(b.allocator);
     defer script.deinit();
-    try generateMemoryBlock(&script, &layout);
+
+    try generateMemoryRegions(&script, &layout);
+
+    for (layout.sections) |*section| {
+        try generateSection(&script, section);
+    }
 
     var tmp_path = b.makeTempPath();
-
     var tmp_dir = try fs.openDirAbsolute(tmp_path, .{});
     defer tmp_dir.close();
 
@@ -105,7 +122,7 @@ pub fn link(
 }
 
 /// Generates the `MEMORY { ... }` linker script section.
-fn generateMemoryBlock(
+fn generateMemoryRegions(
     script: *ArrayList(u8),
     layout: *const Layout,
 ) !void {
@@ -140,6 +157,50 @@ fn generateMemoryBlock(
         try script.appendSlice(r_str_start);
         try script.appendSlice(r_str_end);
     }
+
+    try script.appendSlice("}\n\n");
+}
+
+/// Generate `SECTION { ... }` linker script sections.
+fn generateSection(
+    script: *ArrayList(u8),
+    section: *const Section,
+) !void {
+    const name = if (section.address) |address|
+        try fmt.allocPrint(
+            script.allocator,
+            "  .{s} {s} :\n",
+            .{ section.name, address },
+        )
+    else
+        try fmt.allocPrint(
+            script.allocator,
+            "  .{s} :\n",
+            .{section.name},
+        );
+    defer script.allocator.free(name);
+
+    try script.appendSlice("SECTIONS\n{\n");
+    try script.appendSlice(name);
+    try script.appendSlice("  {\n");
+
+    for (section.keep) |keep| {
+        const command = try fmt.allocPrint(
+            script.allocator,
+            "    KEEP(*({s}));\n",
+            .{keep},
+        );
+        defer script.allocator.free(command);
+        try script.appendSlice(command);
+    }
+
+    const closing = try fmt.allocPrint(
+        script.allocator,
+        "  }} > {s}\n",
+        .{section.region},
+    );
+    defer script.allocator.free(closing);
+    try script.appendSlice(closing);
 
     try script.appendSlice("}\n\n");
 }
