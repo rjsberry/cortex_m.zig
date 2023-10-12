@@ -1,4 +1,4 @@
-INCLUDE memory_layout.ld
+INCLUDE memory.ld
 
 EXTERN(_EXCEPTIONS);
 EXTERN(_INTERRUPTS);
