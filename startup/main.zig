@@ -88,6 +88,12 @@ const has_fp = blk: {
     break :blk false;
 };
 
+/// The default pre-init handler.
+export fn _defaultPreInit() callconv(.C) void {}
+
+/// The default init handler.
+export fn _defaultInit() callconv(.C) void {}
+
 /// The default exception/interrupt handler.
 export fn _defaultHandler() callconv(.C) noreturn {
     @panic("");
@@ -175,6 +181,7 @@ export const _EXCEPTIONS linksection(".vector_table.exceptions") = blk: {
 export fn _reset() linksection(".text._reset") callconv(.Naked) noreturn {
     // Note: all variables below come from the linker script.
     asm volatile (
+        \\bl _preInit
         \\ldr r0, =_sbss
         \\ldr r1, =_ebss
         \\movs r2, #0
@@ -208,6 +215,7 @@ export fn _reset() linksection(".text._reset") callconv(.Naked) noreturn {
     }
 
     asm volatile (
+        \\bl _init
         \\b main
     );
 }

@@ -18,6 +18,12 @@ PROVIDE(_sysTick = _defaultHandler);
 
 ENTRY(_reset);
 
+EXTERN(_defaultPreInit);
+EXTERN(_defaultInit);
+
+PROVIDE(_preInit = _defaultPreInit);
+PROVIDE(_init = _defaultInit);
+
 SECTIONS
 {
   PROVIDE(_stack_start = ORIGIN(RAM) + LENGTH(RAM));
