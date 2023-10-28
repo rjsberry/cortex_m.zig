@@ -15,8 +15,15 @@ pub fn build(b: *std.Build) void {
     _ = b.standardTargetOptions(.{});
     _ = b.standardOptimizeOption(.{});
 
+    const cortex_m = b.addModule("cortex_m", .{
+        .source_file = .{ .path = "src/main.zig" },
+    });
+
     _ = b.addModule("cortex_m_startup", .{
         .source_file = .{ .path = "startup/main.zig" },
+        .dependencies = &.{
+            .{ .name = "cortex_m", .module = cortex_m },
+        },
     });
 }
 

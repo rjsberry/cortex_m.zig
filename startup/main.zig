@@ -1,92 +1,6 @@
 // The contents of this file is dual-licensed under the MIT or 0BSD license.
 
-const std = @import("std");
-const builtin = @import("builtin");
-
-const fmt = std.fmt;
-const mem = std.mem;
-const Target = std.Target;
-
-const cpu = builtin.target.cpu;
-
-/// Cortex-M CPU generations.
-const Generation = enum {
-    v6m,
-    v7m,
-    v8m,
-};
-
-/// The Cortex-M generation of the current build target (resolves via CPU name).
-const generation = blk: {
-    const v6m = [_][]const u8{
-        "cortex_m0",
-        "cortex_m0plus",
-        "cortex_m1",
-    };
-
-    const v7m = [_][]const u8{
-        "cortex_m3",
-        "cortex_m4",
-        "cortex_m7",
-    };
-
-    const v8m = [_][]const u8{
-        "cortex_m23",
-        "cortex_m33",
-        "cortex_m35p",
-        "cortex_m55",
-        "cortex_m85",
-    };
-
-    inline for (v6m) |cpu_name| {
-        if (mem.eql(u8, cpu.model.name, cpu_name)) {
-            break :blk .v6m;
-        }
-    }
-
-    inline for (v7m) |cpu_name| {
-        if (mem.eql(u8, cpu.model.name, cpu_name)) {
-            break :blk .v7m;
-        }
-    }
-
-    inline for (v8m) |cpu_name| {
-        if (mem.eql(u8, cpu.model.name, cpu_name)) {
-            break :blk .v8m;
-        }
-    }
-
-    @compileError(fmt.comptimePrint(
-        "can't compile 'cortex_m' for '{s}' cpus",
-        .{cpu.model.name},
-    ));
-};
-
-/// Does the CPU having a floating point hardware accelerator?
-///
-/// If so we must enable it in `_reset`.
-const has_fp = blk: {
-    const all_fp_features = [_]Target.arm.Feature{
-        .vfp2,
-        .vfp2sp,
-        .vfp3,
-        .vfp3d16,
-        .vfp3d16sp,
-        .vfp3sp,
-        .vfp4,
-        .vfp4d16,
-        .vfp4d16sp,
-        .vfp4sp,
-    };
-
-    inline for (all_fp_features) |feature| {
-        if (cpu.features.isEnabled(@intFromEnum(feature))) {
-            break :blk true;
-        }
-    }
-
-    break :blk false;
-};
+const cortex_m = @import("cortex_m");
 
 /// The default pre-init handler.
 export fn _defaultPreInit() callconv(.C) void {}
@@ -129,7 +43,7 @@ export const _EXCEPTIONS linksection(".vector_table.exceptions") = blk: {
     vectors[1] = .{ .diverge = _nmi };
     vectors[2] = .{ .diverge = _hardFault };
 
-    if (generation == .v6m) {
+    if (cortex_m.cpu.generation == .v6m) {
         vectors[3] = .{ .reserve = 0 };
         vectors[4] = .{ .reserve = 0 };
         vectors[5] = .{ .reserve = 0 };
@@ -139,7 +53,7 @@ export const _EXCEPTIONS linksection(".vector_table.exceptions") = blk: {
         vectors[5] = .{ .diverge = _usageFault };
     }
 
-    if (generation == .v8m) {
+    if (cortex_m.cpu.generation == .v8m) {
         vectors[6] = .{ .diverege = _secureFault };
     } else {
         vectors[6] = .{ .reserve = 0 };
@@ -151,7 +65,7 @@ export const _EXCEPTIONS linksection(".vector_table.exceptions") = blk: {
 
     vectors[10] = .{ .handler = _svCall };
 
-    if (generation == .v6m) {
+    if (cortex_m.cpu.generation == .v6m) {
         vectors[11] = .{ .reserve = 0 };
     } else {
         vectors[11] = .{ .handler = _debugMonitor };
@@ -167,7 +81,7 @@ export const _EXCEPTIONS linksection(".vector_table.exceptions") = blk: {
 
 /// The reset handler.
 ///
-/// If the core has a floating point hardware accelerator we fully enable both
+/// If the CPU has a floating point hardware accelerator we fully enable both
 /// CP10 and CP11 coprocessors (this check is made at comptime and has no
 /// runtime cost).
 ///
@@ -178,8 +92,30 @@ export const _EXCEPTIONS linksection(".vector_table.exceptions") = blk: {
 ///     // ...
 /// }
 /// ```
+///
+/// Also branches to two optional init functions: `_preInit` and `_init`.
+///
+/// `_preInit` is called immediately on reset before RAM is initialized. This
+/// can be used as a hook to call very early initialization code, e.g. C/C++
+/// runtime initialization.
+///
+/// `_init` is called right before main. It can be used as a facade by other
+/// downstream startup implementations to hide device specific detail from the
+/// user, e.g. initializing clocks/PLLs.
+///
+/// Both functions are plain C functions with no arg and no return:
+///
+/// ```
+/// export fn _preInit() callconv(.C) void {
+///     // ...
+/// }
+///
+/// export fn _init() callconv(.C) void {
+///     // ...
+/// }
+/// ```
 export fn _reset() linksection(".text._reset") callconv(.Naked) noreturn {
-    // Note: all variables below come from the linker script.
+    // Note: all variables in assembly below come from the linker script.
     asm volatile (
         \\bl _preInit
         \\ldr r0, =_sbss
@@ -203,7 +139,7 @@ export fn _reset() linksection(".text._reset") callconv(.Naked) noreturn {
         \\3:
     );
 
-    if (has_fp) {
+    if (cortex_m.cpu.has_fp) {
         asm volatile (
             \\ldr r0, =0xE000ED88
             \\ldr r1, [r0]
